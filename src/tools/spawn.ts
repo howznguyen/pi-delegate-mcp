@@ -23,7 +23,7 @@ const spawnShape = {
     .array(z.string())
     .optional()
     .describe(
-      `Tool allowlist for this delegate. Default: ${READ_ONLY_TOOLS.join(", ")}. ` +
+      `Tool allowlist for this delegate. [] disables all tools. Omit for defaults: ${READ_ONLY_TOOLS.join(", ")}. ` +
         `Permitted on this server: ${ALLOW_ALL ? "any" : [...PERMITTED].join(", ")}.`,
     ),
   extensions: z

@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { STATE_DIR } from "../config.js";
 import type { PiWorker } from "../pi/worker.js";
@@ -24,16 +23,20 @@ function flush(): void {
   const payload = pending;
   pending = undefined;
   if (!payload) return;
+  const temp = join(STATE_DIR, `${process.pid}.tmp`);
   try {
     mkdirSync(STATE_DIR, { recursive: true });
     // Write-then-rename so a reader never sees a half-written file.
-    const temp = join(tmpdir(), `pi-delegate-${process.pid}-${Date.now()}.json`);
     writeFileSync(temp, JSON.stringify(payload));
-    rmSync(FILE, { force: true });
-    writeFileSync(FILE, readFileSync(temp));
-    rmSync(temp, { force: true });
+    renameSync(temp, FILE);
   } catch {
     // The status line is a convenience. Never let it break a delegate.
+  } finally {
+    try {
+      rmSync(temp, { force: true });
+    } catch {
+      // Best-effort cleanup.
+    }
   }
 }
 

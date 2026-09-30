@@ -118,7 +118,7 @@ export function registerControl(server: McpServer): void {
     },
     async ({ sessionId }) => {
       const w = must(sessionId);
-      if (w.state === "running" || w.state === "starting")
+      if (w.isActive)
         throw new Error(`Session ${sessionId} is still ${w.state}. Call abort first.`);
       w.dispose();
       forget(sessionId);

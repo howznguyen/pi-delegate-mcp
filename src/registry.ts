@@ -39,7 +39,7 @@ export function forget(id: string): void {
 
 /** Drop the oldest finished sessions once history is over budget. Running ones are safe. */
 export function evictHistory(): void {
-  const done = all().filter((w) => w.state !== "running" && w.state !== "starting");
+  const done = all().filter((w) => !w.isActive);
   while (sessions.size > HISTORY_LIMIT && done.length) {
     const oldest = done.shift();
     if (!oldest) break;

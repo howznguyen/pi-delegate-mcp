@@ -330,6 +330,8 @@ host pid disappears, so a host that dies without closing the transport leaves no
 Tools are locked to `read, grep, find, ls` at session construction. Anything else is refused
 before a session is even created.
 
+Omit `tools` to use the defaults. Pass `tools: []` to disable all tools.
+
 To widen that, name the extra tools on the server:
 
 ```json

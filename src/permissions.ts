@@ -13,7 +13,7 @@ export const permittedLabel = (): string => (ALLOW_ALL ? "any" : [...PERMITTED].
  * before a session exists, so a denied tool never reaches a running delegate.
  */
 export function pickTools(requested?: string[]): string[] {
-  if (!requested?.length) return [...READ_ONLY_TOOLS];
+  if (requested === undefined) return [...READ_ONLY_TOOLS];
   if (ALLOW_ALL) return requested;
   const denied = requested.filter((t) => !PERMITTED.has(t));
   if (denied.length)

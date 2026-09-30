@@ -60,6 +60,8 @@ export class PiWorker {
   private readonly openCalls = new Map<string, ToolCall>();
   private session: AgentSession | undefined;
   private unsubscribe: (() => void) | undefined;
+  private providerError: string | undefined;
+  private abortPromise: Promise<void> | undefined;
 
   constructor({ id, label, cwd, model, tools, extensions = false }: WorkerOptions) {
     this.id = id ?? randomUUID();
@@ -71,9 +73,23 @@ export class PiWorker {
     this.startedAt = new Date().toISOString();
   }
 
+  get isActive(): boolean {
+    return this.state === "running" || this.state === "starting" || this.abortPromise !== undefined;
+  }
+
+  private isAborted(): boolean {
+    return this.state === "aborted";
+  }
+
+  private clearQuestions(): void {
+    for (const q of this.questions.values()) q.resolve(undefined);
+    this.questions.clear();
+  }
+
   private uiContext(): ExtensionUIContext {
     return createUiContext({
       ask: (kind, title, detail, options) => {
+        if (this.isAborted()) return Promise.resolve(undefined);
         const q = new Question(kind, title, detail, options);
         this.questions.set(q.id, q);
         this.onChange?.();
@@ -87,6 +103,7 @@ export class PiWorker {
 
   async start(prompt: string): Promise<this> {
     const model = await resolveModel(this.modelSpec, this.cwd);
+    if (this.isAborted()) return this;
 
     // Third-party pi extensions start timers and sockets that outlive dispose() and then
     // throw against a stale ctx. A delegate does not need them.
@@ -111,6 +128,7 @@ export class PiWorker {
       }
     }
 
+    if (this.isAborted()) return this;
     const { session } = await createAgentSession({
       cwd: this.cwd,
       modelRuntime: await getRuntime(),
@@ -120,6 +138,10 @@ export class PiWorker {
       resourceLoader,
     });
     this.session = session;
+    if (this.isAborted()) {
+      session.dispose();
+      return this;
+    }
     this.model = model ? `${model.provider}/${model.id}` : "(pi default)";
     this.activeTools = session.getActiveToolNames();
 
@@ -130,6 +152,7 @@ export class PiWorker {
       // Extensions are optional. A binding failure must not sink the run.
     }
 
+    if (this.isAborted()) return this;
     this.track(session, prompt);
     return this;
   }
@@ -141,21 +164,29 @@ export class PiWorker {
   private track(session: AgentSession, prompt: string): void {
     this.state = "running";
     this.error = undefined;
+    this.providerError = undefined;
+    this.lastText = "";
     this.finishedAt = undefined;
     this.run = session
       .prompt(prompt)
       .then(() => session.waitForIdle())
       .then(() => {
-        this.state = this.state === "aborted" ? "aborted" : "done";
+        if (this.state === "aborted") return;
+        if (this.providerError !== undefined) {
+          this.state = "error";
+          this.error = this.providerError;
+        } else this.state = "done";
       })
       .catch((e: unknown) => {
-        this.state = "error";
-        this.error = message(e);
+        if (this.state !== "aborted") {
+          this.state = "error";
+          this.error = message(e);
+        }
       })
       .finally(() => {
         this.finishedAt = new Date().toISOString();
         // Unblock anything still waiting on an answer that will now never come.
-        for (const q of this.questions.values()) q.resolve(undefined);
+        this.clearQuestions();
         this.onChange?.();
       });
   }
@@ -167,7 +198,7 @@ export class PiWorker {
    */
   followUp(prompt: string): { sessionId: string; state: SessionState; turnsSoFar: number } {
     if (!this.session) throw new Error(`Session ${this.id} never started, nothing to follow up on.`);
-    if (this.state === "running" || this.state === "starting")
+    if (this.isActive)
       throw new Error(
         `Session ${this.id} is ${this.state}. Use \`steer\` to redirect a delegate that is still working.`,
       );
@@ -213,9 +244,18 @@ export class PiWorker {
         break;
       }
 
+      case "message_end":
+        if (ev.message.role === "assistant") {
+          // A later successful retry supersedes an earlier provider error.
+          this.providerError = ev.message.stopReason === "error"
+            ? ev.message.errorMessage || "provider error" : undefined;
+          this.lastText = ev.message.content.filter((p) => p.type === "text").map((p) => p.text).join("\n");
+        }
+        break;
+
       case "message_update":
-        if (ev.assistantMessageEvent?.type === "text_end")
-          this.lastText = ev.assistantMessageEvent.content ?? this.lastText;
+        if (ev.assistantMessageEvent.type === "text_end" && ev.message.role === "assistant")
+          this.lastText = ev.message.content.filter((p) => p.type === "text").map((p) => p.text).join("\n");
         break;
     }
   }
@@ -242,8 +282,18 @@ export class PiWorker {
 
   async abort(): Promise<{ aborted: true }> {
     this.state = "aborted";
+    // Resolve dialogs before waiting for pi: an extension may be awaiting their answers.
+    this.clearQuestions();
     this.onChange?.();
-    await this.session?.abort().catch(NOOP);
+    if (!this.abortPromise) {
+      this.abortPromise = (this.session?.abort() ?? Promise.resolve()).catch(NOOP);
+    }
+    try {
+      await this.abortPromise;
+    } finally {
+      this.abortPromise = undefined;
+      this.onChange?.();
+    }
     return { aborted: true };
   }
 
