@@ -1,4 +1,5 @@
 import { DEFAULT_MODEL, HISTORY_LIMIT } from "./config.js";
+import { callbackFromEnv } from "./callback.js";
 import { pickTools } from "./permissions.js";
 import { PiWorker } from "./pi/worker.js";
 import { publish } from "./statusline/state.js";
@@ -56,6 +57,7 @@ export interface LaunchRequest {
   extensions?: boolean | undefined;
   id?: string | undefined;
   label?: string | undefined;
+  callbackTarget?: string | undefined;
 }
 
 export async function launch(req: LaunchRequest): Promise<PiWorker> {
@@ -66,6 +68,8 @@ export async function launch(req: LaunchRequest): Promise<PiWorker> {
     model: req.model || DEFAULT_MODEL,
     tools: pickTools(req.tools),
     extensions: req.extensions ?? false,
+    callbackTarget: req.callbackTarget,
+    callback: callbackFromEnv(),
   });
   worker.onChange = () => publish(all());
   sessions.set(worker.id, worker);

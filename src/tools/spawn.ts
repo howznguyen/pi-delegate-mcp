@@ -19,6 +19,7 @@ const spawnShape = {
         "must start alphanumeric, must not already be in use. Defaults to a UUID.",
     ),
   label: z.string().optional().describe("Free-text note shown in `sessions`, e.g. what this delegate is for"),
+  callbackTarget: z.string().optional().describe("Explicit completion callback target. Never inferred; for ChatGPT/Web2API this is the supervising conversation UUID."),
   tools: z
     .array(z.string())
     .optional()
@@ -36,6 +37,7 @@ const taskShape = z.object({
   prompt: z.string().describe("The task for this delegate"),
   id: z.string().optional().describe("Session id for this task. Defaults to `idPrefix`-NN, or a UUID."),
   label: z.string().optional().describe("Free-text note for this task"),
+  callbackTarget: z.string().optional().describe("Explicit completion callback target for this task"),
   model: z.string().optional().describe("Overrides the batch `model` for this task alone"),
   cwd: z.string().optional().describe("Overrides the batch `cwd` for this task alone"),
   tools: z.array(z.string()).optional().describe("Overrides the batch `tools` for this task alone"),
@@ -86,6 +88,7 @@ export function registerSpawn(server: McpServer): void {
       const merged = tasks.map((t, i) => ({
         prompt: t.prompt,
         label: t.label,
+        callbackTarget: t.callbackTarget,
         model: t.model ?? model,
         cwd: t.cwd ?? cwd,
         tools: t.tools ?? tools,

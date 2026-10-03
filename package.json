@@ -25,7 +25,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "test:ci": "npm run build && node test/launch.mjs node dist/index.js",
-    "test": "for t in guard perm id scope init nopi smoke trace model; do echo \"== $t\"; node test/$t.mjs || exit 1; done",
+    "test": "for t in guard perm id scope init nopi smoke trace model callback; do echo \"== $t\"; node test/$t.mjs || exit 1; done",
     "prepublishOnly": "npm run test:ci"
   },
   "engines": {

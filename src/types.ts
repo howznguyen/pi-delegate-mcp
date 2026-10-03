@@ -1,5 +1,15 @@
 /** Every state a delegate can be in. `starting` covers session construction. */
 export type SessionState = "starting" | "running" | "done" | "aborted" | "error";
+export type CallbackStatus = "pending" | "delivered" | "failed";
+export interface CallbackState {
+  status: CallbackStatus;
+  target: string;
+  deliveryId: string;
+  resultHash: string | undefined;
+  attempts: number;
+  deliveredAt: string | undefined;
+  error: string | undefined;
+}
 
 export type QuestionKind = "select" | "confirm" | "input";
 
@@ -49,6 +59,7 @@ export interface Snapshot {
   error: string | undefined;
   startedAt: string;
   finishedAt: string | undefined;
+  callback: CallbackState | undefined;
 }
 
 /** pi's enabledModels scope, resolved for one working directory. */
